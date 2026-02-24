@@ -24,24 +24,24 @@ A multi-game reaction time tester for Arduino Mega, featuring four game modes, a
 
 ## Pin Assignments
 
-| Arduino Pin | Connected To                   | Notes                           |
-| ----------- | ------------------------------ | ------------------------------- |
-| 2           | LED 1                          |                                 |
-| 3           | LED 2                          |                                 |
-| 4           | LED 3                          |                                 |
-| 5           | LED 4                          |                                 |
-| 6           | Button 1                       | INPUT_PULLUP                    |
-| 7           | Button 2                       | INPUT_PULLUP                    |
-| 8           | Button 3                       | INPUT_PULLUP                    |
-| 9           | Piezo speaker                  | `tone()` output |
-| 10          | Button 4                       | INPUT_PULLUP |
-| 11          | Digit 3 enable transistor base | |
-| 12          | Digit 4 enable transistor base | |
-| 13          | Digit 1 enable transistor base | |
+| Arduino Pin | Connected To                   | Notes                                 |
+| ----------- | ------------------------------ | ------------------------------------- |
+| 2           | LED 1                          |                                       |
+| 3           | LED 2                          |                                       |
+| 4           | LED 3                          |                                       |
+| 5           | LED 4                          |                                       |
+| 6           | Button 1                       | INPUT_PULLUP                          |
+| 7           | Button 2                       | INPUT_PULLUP                          |
+| 8           | Button 3                       | INPUT_PULLUP                          |
+| 9           | Piezo speaker                  | `tone()` output                       |
+| 10          | Button 4                       | INPUT_PULLUP                          |
+| 11          | Digit 3 enable transistor base |                                       |
+| 12          | Digit 4 enable transistor base |                                       |
+| 13          | Digit 1 enable transistor base |                                       |
 | 23          | Digit 2 enable transistor base | Moved from pin 10 to resolve conflict |
-| 20 (SDA)    | 74HC595 Latch + I²C SDA        | Shared — LCD and shift register |
-| 21 (SCL)    | 74HC595 Clock + I²C SCL        | Shared — LCD and shift register |
-| 22          | 74HC595 Data (SER)             |                                 |
+| 20 (SDA)    | 74HC595 Latch + I²C SDA        | Shared — LCD and shift register       |
+| 21 (SCL)    | 74HC595 Clock + I²C SCL        | Shared — LCD and shift register       |
+| 22          | 74HC595 Data (SER)             |                                       |
 
 > **Note:** Pins 20/21 are shared between the 74HC595 and the I²C LCD. These are as present in the original code; adjust for your build if needed.
 
@@ -114,11 +114,11 @@ Install via the Arduino Library Manager or add to `platformio.ini`:
 
 Select a game from the start menu by pressing the corresponding button. The LCD shows the menu name; the 7-segment display alternates between the previous score and the all-time high score.
 
-| Button | Game         | Description |
-| ------ | ------------ | ----------- |
-| 1      | **Standard** | A random LED lights up; press the matching button before the countdown expires. Speed increases each level. Wrong press or timeout = game over. |
-| 2      | **Speed**    | Press the correct button for each lit LED as fast as possible. 10-second countdown shown on LCD. Score = number of correct presses. |
-| 3      | **Memory**   | Simon Says. The Arduino plays a growing sequence of LED flashes; repeat the sequence using the corresponding buttons. Score = length of longest sequence completed. Wrong press = game over. |
+| Button | Game         | Description                                                                                                                                                                                                                    |
+| ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1      | **Standard** | A random LED lights up; press the matching button before the countdown expires. Speed increases each level. Wrong press or timeout = game over.                                                                                |
+| 2      | **Speed**    | Press the correct button for each lit LED as fast as possible. 10-second countdown shown on LCD. Score = number of correct presses.                                                                                            |
+| 3      | **Memory**   | Simon Says. The Arduino plays a growing sequence of LED flashes; repeat the sequence using the corresponding buttons. Score = length of longest sequence completed. Wrong press = game over.                                   |
 | 4      | **1v1**      | Two-player reaction test. After a random 1–5 second delay, LEDs 1 and 4 light up simultaneously. The first player to press their button wins; their tone plays and their LED stays lit. Score = reaction time in milliseconds. |
 
 ### Button-to-Tone Mapping
@@ -142,18 +142,18 @@ Select a game from the start menu by pressing the corresponding button. The LCD 
 ## Building & Uploading
 
 ### Arduino IDE
+
 1. Open `spede/spede.ino`.
 2. Install **LiquidCrystal_I2C** via Library Manager (search `marcoschwartz LiquidCrystal_I2C`).
 3. Select your board and the correct COM port.
 4. Click **Upload**.
 
 ### PlatformIO (recommended)
+
 1. Open the project folder in VS Code with the PlatformIO extension installed.
 2. The `platformio.ini` already declares the library dependency — it will be downloaded automatically.
 3. Select the environment matching your board:
    - `nanoatmega328new` — Arduino Nano clone with ATmega328P (most common, 115200 baud bootloader)
-   - `nanoatmega328` — Arduino Nano with older ATmega328P bootloader (57600 baud)
-   - `nanoatmega168` — Arduino Nano with ATmega168
 4. Run **PlatformIO: Upload**.
 
 ---
