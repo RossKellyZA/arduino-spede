@@ -1,0 +1,46 @@
+graph TD
+    MEGA["Arduino Mega 2560"]
+
+    subgraph I2C["I²C Bus (pins 20 SDA / 21 SCL)"]
+        LCD["16×2 LCD\n(addr 0x27)"]
+    end
+
+    subgraph SR["Shift Register"]
+        HC595["74HC595\nSER=pin22  RCLK=pin20  SRCLK=pin21"]
+        SEG["4-Digit 7-Segment Display\n(segments A–G)"]
+        HC595 -->|"QA–QG"| SEG
+    end
+
+    subgraph DIGITS["Digit Select (NPN transistors)"]
+        D1["Digit 1 — pin 13"]
+        D2["Digit 2 — pin 10"]
+        D3["Digit 3 — pin 11"]
+        D4["Digit 4 — pin 12"]
+    end
+
+    subgraph LEDS["LEDs (with resistors)"]
+        L1["LED 1 — pin 2"]
+        L2["LED 2 — pin 3"]
+        L3["LED 3 — pin 4"]
+        L4["LED 4 — pin 5"]
+    end
+
+    subgraph BTNS["Buttons (INPUT_PULLUP → GND)"]
+        B1["Button 1 — pin 6"]
+        B2["Button 2 — pin 7"]
+        B3["Button 3 — pin 8"]
+        B4["Button 4 — pin 10"]
+    end
+
+    EEPROM["On-board EEPROM\n(hi-score bytes 0–1)"]
+    SPK["Piezo Speaker — pin 9"]
+
+    MEGA -- I2C --> LCD
+    MEGA -- "SER/RCLK/SRCLK" --> HC595
+    MEGA -- "pins 13,10,11,12" --> D1 & D2 & D3 & D4
+    D1 & D2 & D3 & D4 -- "common cathode" --> SEG
+    MEGA --> L1 & L2 & L3 & L4
+    B1 & B2 & B3 & B4 -- "to GND" --> GND["GND"]
+    MEGA --- B1 & B2 & B3 & B4
+    MEGA -- "tone()" --> SPK
+    MEGA <-- "EEPROM.read/write" --> EEPROM

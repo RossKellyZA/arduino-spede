@@ -52,7 +52,9 @@ const int dataPin = 22;
 const int tonePin = 9;
 
 // Arduino pins connected to transistors controlling the digits
-const int enableDigits[] = { 13,10,11,12 };
+// NOTE: pin 23 replaces the original pin 10 to avoid conflict with buttons[3].
+// Requires rewiring digit-2 transistor base to pin 23 on the Mega.
+const int enableDigits[] = { 13,23,11,12 };
 
 // Arduino pins connected to leds
 const int leds[] = { 2,3,4,5 };
@@ -64,7 +66,7 @@ const int buttons[] = { 6,7,8,10 };
 const int toneFreq[] = { 277, 311, 370, 415 };  // CS4, DS4, FS4, GS4
 
 // Segment bits for numbers 0-9
-int digits[10] = {
+const byte digits[10] = {
   B1111101, // 0  ABCDEF-
   B1000001, // 1  -BC----
   B1011110, // 2  AB-DE-G
@@ -90,13 +92,25 @@ int score = 0;
 int led = 0;
 int prevLed = 0;
 int nextTimer = 0;
-long globalGameTimer = 0;
+unsigned long globalGameTimer = 0;
 int level = 0;
 int hiscore = 0;
 int startMenuTimer = 0;
 int prevButtonState[] = { HIGH, HIGH, HIGH, HIGH };
 int state = STATE_START_MENU;
 int prevState = STATE_GAME_OVER;
+
+// Speed game
+unsigned long speedLastSec = 0;
+
+// Memory game (Simon Says)
+const int MEM_MAX_LENGTH = 64;
+byte memSeq[MEM_MAX_LENGTH];
+int memLength   = 0;
+int memShowPos  = 0;
+int memInputPos = 0;
+int memPhase    = 0;        // 0 = show sequence, 1 = player input
+unsigned long memTimer = 0;
 
 // Read hiscore value from EEPROM
 void readHiscore() {
@@ -114,13 +128,12 @@ void writeHiscore() {
 }
 
 void setup() {
-  // set up the LCD's number of columns and rows:
-  //lcd.backlight();
-  //lcd.begin(16, 2);
-
   Serial.begin(9600);
-  
-  lcd.begin();
+
+  // Allow hardware to stabilise before LCD init
+  delay(100);
+  lcd.init();
+  lcd.backlight();
   
   pinMode(latchPin, OUTPUT);
   pinMode(clockPin, OUTPUT);
@@ -169,12 +182,17 @@ void updateDisplay(int score, boolean enable, boolean forceDisplayUpdate) {
       lcd.print("GAME_SPEED");
       lcd.setCursor(0, 1);
       lcd.print(score);
-      lcd.print("      ");
-      lcd.print((millis() - globalGameTimer)/1000);
+      lcd.print("    ");
+      lcd.print((globalGameTimer == 0) ? 10 : (10 - (millis() - globalGameTimer) / 1000));
+      lcd.print("s  ");
     }
     else if(state == STATE_GAME_MEMORY){
       lcd.clear();
-      lcd.print("GAME_MEMORY");
+      lcd.print("Simon  Rd:");
+      lcd.print(memLength);
+      lcd.print("  ");
+      lcd.setCursor(0, 1);
+      lcd.print("Get ready...    ");
     }
     else if(state == STATE_GAME_1V1){
       lcd.clear();
@@ -251,7 +269,7 @@ void startMenu() {
   }
   
   // start new game if a single button is pressed for 100ms
-  static int startNewGameTimer = 0;
+  static unsigned long startNewGameTimer = 0;
   if(buttonState == 1 || buttonState == 2 || buttonState == 4 || buttonState == 8) {
     if(startNewGameTimer == 0)
       startNewGameTimer = millis();
@@ -297,6 +315,12 @@ void startNewGame() {
   prevLed = -1;
   nextTimer = 0;
   globalGameTimer = 0;
+  speedLastSec = 0;
+  memLength   = 0;
+  memShowPos  = 0;
+  memInputPos = 0;
+  memPhase    = 0;
+  memTimer    = 0;
   gameSpeed = 100;  // initial game speed, higher values are slower 450 default
  
   for(int i = 0; i < 4; i++) 
@@ -384,79 +408,161 @@ void playStandardGame() {
 // Game 2: Speed Game
 //=====================================================
 void playSpeedGame() {
-  int speedGameLengthMillis = 10000;
-  //update screen
-  updateDisplay(score, true, false);
+  const unsigned long speedGameLengthMillis = 10000UL;
 
+  // Initialise timer before updateDisplay so LCD shows correct start time
   if(globalGameTimer == 0){
     globalGameTimer = millis();
+    speedLastSec = 0;
   }
-  else{
-    //Serial.println("Global: " + globalGameTimer);
-    
-    if(nextTimer <= 0) {
+
+  // Initial LCD draw on state entry
+  updateDisplay(score, true, false);
+
+  // Continuously update the LCD countdown once per second
+  unsigned long elapsed = (millis() - globalGameTimer) / 1000;
+  if(elapsed != speedLastSec) {
+    speedLastSec = elapsed;
+    unsigned long remaining = (elapsed < 10) ? (10 - elapsed) : 0;
+    lcd.setCursor(0, 1);
+    lcd.print(score);
+    lcd.print("    ");
+    lcd.print(remaining);
+    lcd.print("s  ");
+  }
+
+  if(nextTimer <= 0) {
+    led = random(4);
+    // make consequent same leds less probable
+    if(led == prevLed)
       led = random(4);
-      // make consequent same leds less probable
-      if(led == prevLed)
-        led = random(4);
-      if(led == prevLed)
-        led = random(4);
-      prevLed = led;
-      nextTimer = 1;
+    if(led == prevLed)
+      led = random(4);
+    prevLed = led;
+    nextTimer = 1;
+  }
+
+  // update leds
+  for(int i = 0; i < 4; i++)
+    digitalWrite(leds[i], led == i || (digitalRead(buttons[i]) == LOW && nextTimer > 5) ? HIGH : LOW);
+
+  tone(tonePin, toneFreq[led], 100);
+
+  // read input   
+  for(int i = 0; i < 4; i++) {
+    int but = digitalRead(buttons[i]);
+    if(but == LOW && prevButtonState[i] == HIGH) {
+      if( led >= 0 ) {
+        // correct button pressed?
+        if( i == led ) {
+          score++;
+          // Update LCD directly to avoid full redraw clearing the countdown
+          unsigned long remaining = (elapsed < 10) ? (10 - elapsed) : 0;
+          lcd.setCursor(0, 1);
+          lcd.print(score);
+          lcd.print("    ");
+          lcd.print(remaining);
+          lcd.print("s  ");
+          led = -1;  // turn off led
+          nextTimer = 0;
+        } else {
+          gameOver();
+        }
+        noTone(tonePin);
+      }
+    }
+    prevButtonState[i] = but;
+  }
+
+  // Check if time has run out
+  if((millis() - globalGameTimer) > speedGameLengthMillis){
+    gameOver();
+  }
+}
+
+//=====================================================
+// Game 3: Memory Game (Simon Says)
+// Score = length of longest sequence successfully repeated
+//=====================================================
+void playMemoryGame() {
+  updateDisplay(score, true, false);  // keeps 7-seg updated; LCD only redrawn on state entry
+
+  const unsigned long SHOW_ON_MS   = 600UL;   // each LED lit duration
+  const unsigned long SHOW_OFF_MS  = 250UL;   // gap between LEDs in sequence
+  const unsigned long PRE_ROUND_MS = 1000UL;  // pause before showing sequence
+
+  if(memPhase == 0) {
+    // --- Phase 0: Show the sequence ---
+    if(memTimer == 0) {
+      // Start of a new round: extend the sequence by one
+      if(memLength < MEM_MAX_LENGTH) {
+        memSeq[memLength] = random(4);
+        memLength++;
+      }
+      memShowPos = 0;
+      memTimer = millis() + PRE_ROUND_MS;
+      lcd.setCursor(0, 0);
+      lcd.print("Simon  Rd:");
+      lcd.print(memLength);
+      lcd.print("  ");
+      lcd.setCursor(0, 1);
+      lcd.print("Watch!          ");
     }
 
-    // update leds
-    for(int i = 0; i < 4; i++)
-    digitalWrite(leds[i], led == i || (digitalRead(buttons[i]) == LOW && nextTimer > 5) ? HIGH : LOW);
-    //digitalWrite(leds[i], led == i);
+    if(millis() < memTimer) return;  // still in gap/pause
 
-    //tone(tonePin, toneFreq[led], nextTimer * 8);
-    tone(tonePin, toneFreq[led], 100);
-
-    // read input   
+    if(memShowPos < memLength) {
+      // Flash the next LED in the sequence
+      int idx = memSeq[memShowPos];
+      digitalWrite(leds[idx], HIGH);
+      tone(tonePin, toneFreq[idx], SHOW_ON_MS - 50);
+      delay(SHOW_ON_MS);
+      digitalWrite(leds[idx], LOW);
+      noTone(tonePin);
+      memShowPos++;
+      memTimer = millis() + SHOW_OFF_MS;
+    } else {
+      // Entire sequence shown — switch to player input
+      memPhase = 1;
+      memInputPos = 0;
+      memTimer = 0;
+      for(int i = 0; i < 4; i++) prevButtonState[i] = HIGH;
+      lcd.setCursor(0, 1);
+      lcd.print("Your turn!      ");
+    }
+  }
+  else if(memPhase == 1) {
+    // --- Phase 1: Player repeats the sequence ---
     for(int i = 0; i < 4; i++) {
       int but = digitalRead(buttons[i]);
       if(but == LOW && prevButtonState[i] == HIGH) {
-        // ignore button press if time since last press is too short
-        if( led >= 0 ) { //&& millis() - lastButtonPress > 50 ) { 
-          // correct button pressed?
-          if( i == led ) {
-            score++;
-            updateDisplay(score, true, true);
-            led = -1;  // turn off led
-            nextTimer = 0;
-          } else {
-            gameOver();
+        if(i == (int)memSeq[memInputPos]) {
+          // Correct button
+          tone(tonePin, toneFreq[i], 200);
+          digitalWrite(leds[i], HIGH);
+          delay(200);
+          digitalWrite(leds[i], LOW);
+          memInputPos++;
+
+          if(memInputPos >= memLength) {
+            // Round complete — update score to current sequence length
+            score = memLength;
+            lcd.setCursor(0, 1);
+            lcd.print("  Correct!      ");
+            delay(600);
+            // Move to next round
+            memPhase = 0;
+            memTimer = 0;
           }
-          //lastButtonPress = millis();
-          noTone(tonePin);
+        } else {
+          // Wrong button
+          gameOver();
+          return;
         }
       }
       prevButtonState[i] = but;
     }
   }
-
-  //Check if time has run out
-  if((millis() - globalGameTimer) > speedGameLengthMillis){
-    gameOver();
-  }
-
-  //update display with Game name
-  //start speed timer eg 30s
-  //activate random led
-  //read input == to led
-  //score++
-  //when timer end, game over, display score
-  //gameover()
-}
-
-//=====================================================
-// Game 3: Memory Game
-//=====================================================
-void playMemoryGame() {
-  updateDisplay(score, true, false);
-  delay(2000);
-  gameOver();
 }
 
 //=====================================================
@@ -465,15 +571,21 @@ void playMemoryGame() {
 void play1v1Game() {
   //update screen
   updateDisplay(score, true, false);
-  
-  //random delay as game starts
-  if(globalGameTimer == 0){
-    delay(5000 - random(4000));
-    globalGameTimer = millis();
 
-    //light up LEDS
-    digitalWrite(leds[0], HIGH);
-    digitalWrite(leds[3], HIGH);
+  // Non-blocking random delay before the reaction signal
+  static unsigned long waitUntil = 0;
+  if(globalGameTimer == 0 && waitUntil == 0){
+    waitUntil = millis() + 1000 + random(4000);  // 1–5 second random delay
+  }
+  if(globalGameTimer == 0){
+    if(millis() >= waitUntil){
+      globalGameTimer = millis();
+      waitUntil = 0;
+      //light up LEDS
+      digitalWrite(leds[0], HIGH);
+      digitalWrite(leds[3], HIGH);
+    }
+    return;
   }
   else{
     //start timer
@@ -484,14 +596,16 @@ void play1v1Game() {
       if(but == LOW && prevButtonState[i] == HIGH) {
         // ignore button press if time since last press is too short
 
-        score = millis() - globalGameTimer;    //delay(gameStartDelayTimer);
+        score = millis() - globalGameTimer;
         
         if(i == 0){
+          tone(tonePin, toneFreq[0], 500);
           updateDisplay(score, true, true);
           digitalWrite(leds[0], HIGH);
           digitalWrite(leds[3], LOW);
         }
         else if(i == 3){
+          tone(tonePin, toneFreq[3], 500);
           updateDisplay(score, true, true);
           digitalWrite(leds[0], LOW);
           digitalWrite(leds[3], HIGH);
@@ -528,7 +642,7 @@ void gameOver() {
   for(int i = 0; i < 70*5; i++) {
     if(i == 70*2)
       tone(tonePin, 200, 2000);    
-    boolean enable = 1 - (i/60) & 1;
+    boolean enable = 1 - ((i/60) & 1);
     updateDisplay(score, enable, false);
   }
   
